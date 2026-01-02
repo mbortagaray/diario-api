@@ -3,9 +3,8 @@ const puppeteer = require('puppeteer');
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Health check
 app.get('/', (req, res) => {
@@ -28,7 +27,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Rota principal de scraping para Diário de Belém
+// Rota principal de scraping
 app.post('/scrape-diario', async (req, res) => {
   let browser;
   
@@ -68,7 +67,7 @@ app.post('/scrape-diario', async (req, res) => {
       timeout: 60000
     });
     
-    // Aguarda carregamento
+    // Aguarda carregamento inicial
     await page.waitForTimeout(3000);
     
     // Preenche palavra-chave
@@ -158,9 +157,17 @@ app.post('/scrape-diario', async (req, res) => {
       await page.keyboard.press('Enter');
     }
     
-    // Aguarda resultados
-    console.log('⏳ Aguardando resultados...');
-    await page.waitForTimeout(5000);
+    // 🔧 CORREÇÃO: Aguarda mais tempo e espera pela atualização da tabela
+    console.log('⏳ Aguardando resultados da pesquisa...');
+    await page.waitForTimeout(8000); // Aumentado de 5s para 8s
+    
+    // Aguarda a tabela estar presente (mesmo que vazia)
+    try {
+      await page.waitForSelector('table tbody', { timeout: 5000 });
+      console.log('✅ Tabela de resultados carregada');
+    } catch (e) {
+      console.log('⚠️ Tabela não encontrada, tentando extrair dados mesmo assim...');
+    }
     
     // Extrai os resultados
     console.log('📊 Extraindo dados...');
@@ -186,6 +193,7 @@ app.post('/scrape-diario', async (req, res) => {
       linhas.forEach((linha, index) => {
         const texto = linha.innerText.trim();
         
+        // Ignora linhas vazias ou muito curtas
         if (texto.length > 10) {
           const colunas = linha.querySelectorAll('td, .coluna, div');
           const colunasTexto = Array.from(colunas)
@@ -266,7 +274,7 @@ app.get('/screenshot', async (req, res) => {
     browser = await puppeteer.launch({
       headless: 'new',
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
     const page = await browser.newPage();
@@ -288,7 +296,7 @@ app.get('/screenshot', async (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 API Puppeteer rodando na porta ${PORT}`);
-  console.log(`📍 Health check: http://localhost:${PORT}/`);
+  console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`📍 Scrape: POST http://localhost:${PORT}/scrape-diario`);
   console.log(`📍 Screenshot: GET http://localhost:${PORT}/screenshot`);
 });
